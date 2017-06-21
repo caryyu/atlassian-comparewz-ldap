@@ -9,6 +9,7 @@ import org.springframework.stereotype.Component;
 
 import javax.naming.NameClassPair;
 import javax.naming.NamingException;
+import javax.naming.directory.SearchResult;
 
 import java.util.Iterator;
 import java.util.List;
@@ -58,6 +59,10 @@ public class ACLApplication {
                     String username = map.get("name").toString();
 
                     printUsernameNotSameAndEmailSame(email,username);
+
+//                    printUsernameSameAndEmailNotSame(email,username);
+
+//                    printUsernameNotExistedInLdap(username);
                 }
             }
         }
@@ -80,18 +85,68 @@ public class ACLApplication {
                 System.out.printf("username:%s,email:%s\n",username,email);
             }
         }
+
+        /**
+         * 用户名相同&Email不相同
+         * @param email
+         * @param username
+         */
+        private void printUsernameSameAndEmailNotSame(String email,String username) {
+            ExistingCallbackHandler callbackHandler = new ExistingCallbackHandler();
+
+            ldapTemplate.search(query()
+                    .where("objectClass")
+                    .is("person")
+                    .and("sAMAccountName").is(username)
+                    .and("mail").not().is(email), callbackHandler);
+
+            if(callbackHandler.isExist()) {
+                String mailFromLdap = null;
+                try {
+                   mailFromLdap = callbackHandler.getSearchResult().getAttributes().get("mail").get().toString();
+                } catch (NamingException e) {
+                    e.printStackTrace();
+                }
+                System.out.printf("用户名: %s\t\tJIRA邮箱: %s\t\tLDAP邮箱: %s\n",username,email,mailFromLdap);
+            }
+        }
+
+        /**
+         * 把JIRA不存在LDAP中的用户进行打印
+         * @param username
+         */
+        private void printUsernameNotExistedInLdap(String username) {
+            ExistingCallbackHandler callbackHandler = new ExistingCallbackHandler();
+
+            ldapTemplate.search(query()
+                    .where("objectClass")
+                    .is("person")
+                    .and("sAMAccountName").is(username), callbackHandler);
+
+            if(!callbackHandler.isExist()) {
+                System.out.printf("用户名: %s\n",username);
+            }
+        }
     }
 
     static class ExistingCallbackHandler implements NameClassPairCallbackHandler {
         private boolean exist;
+        private SearchResult searchResult;
 
         @Override
         public void handleNameClassPair(NameClassPair nameClassPair) throws NamingException {
             this.exist = true;
+            if(nameClassPair instanceof SearchResult){
+                this.searchResult = (SearchResult)nameClassPair;
+            }
         }
 
         public boolean isExist() {
             return exist;
+        }
+
+        public SearchResult getSearchResult() {
+            return searchResult;
         }
     }
 }
